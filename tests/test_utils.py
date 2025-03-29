@@ -15,7 +15,7 @@ import pandas as pd
 
 import unittest
 
-from yfinance.utils import is_valid_period_format
+from yfinance.utils import is_valid_period_format, _dts_in_same_interval
 
 
 class TestPandas(unittest.TestCase):
@@ -59,6 +59,93 @@ class TestUtils(unittest.TestCase):
         self.assertFalse(is_valid_period_format(None))    # None input
         self.assertFalse(is_valid_period_format("0d"))    # Zero is invalid
         self.assertTrue(is_valid_period_format("999mo"))  # Large number valid
+
+
+class TestDateIntervalCheck(unittest.TestCase):
+    def test_same_day(self):
+        dt1 = pd.Timestamp("2024-10-15 10:00:00")
+        dt2 = pd.Timestamp("2024-10-15 14:30:00")
+        self.assertTrue(_dts_in_same_interval(dt1, dt2, "1d"))
+        
+    def test_different_days(self):
+        dt1 = pd.Timestamp("2024-10-15 10:00:00")
+        dt2 = pd.Timestamp("2024-10-16 09:00:00")
+        self.assertFalse(_dts_in_same_interval(dt1, dt2, "1d"))
+    
+    def test_same_week_mid_week(self):
+        # Wednesday and Friday in same week
+        dt1 = pd.Timestamp("2024-10-16")  # Wednesday
+        dt2 = pd.Timestamp("2024-10-18")  # Friday
+        self.assertTrue(_dts_in_same_interval(dt1, dt2, "1wk"))
+    
+    def test_different_weeks(self):
+        dt1 = pd.Timestamp("2024-10-14")  # Monday week 42
+        dt2 = pd.Timestamp("2024-10-21")  # Monday week 43
+        self.assertFalse(_dts_in_same_interval(dt1, dt2, "1wk"))
+    
+    def test_week_year_boundary(self):
+        # Week 52 of 2024 spans into 2025
+        dt1 = pd.Timestamp("2024-12-30")  # Monday in week 1 (ISO calendar)
+        dt2 = pd.Timestamp("2025-01-03")  # Friday in week 1 (ISO calendar)
+        self.assertTrue(_dts_in_same_interval(dt1, dt2, "1wk"))
+    
+    def test_same_month(self):
+        dt1 = pd.Timestamp("2024-10-01")
+        dt2 = pd.Timestamp("2024-10-31")
+        self.assertTrue(_dts_in_same_interval(dt1, dt2, "1mo"))
+    
+    def test_different_months(self):
+        dt1 = pd.Timestamp("2024-10-31")
+        dt2 = pd.Timestamp("2024-11-01")
+        self.assertFalse(_dts_in_same_interval(dt1, dt2, "1mo"))
+    
+    def test_month_year_boundary(self):
+        dt1 = pd.Timestamp("2024-12-15")
+        dt2 = pd.Timestamp("2025-01-15")
+        self.assertFalse(_dts_in_same_interval(dt1, dt2, "1mo"))
+    
+    def test_same_quarter(self):
+        dt1 = pd.Timestamp("2024-10-01")  # Q4
+        dt2 = pd.Timestamp("2024-12-31")  # Q4
+        self.assertTrue(_dts_in_same_interval(dt1, dt2, "3mo"))
+    
+    def test_different_quarters(self):
+        dt1 = pd.Timestamp("2024-09-30")  # Q3
+        dt2 = pd.Timestamp("2024-10-01")  # Q4
+        self.assertFalse(_dts_in_same_interval(dt1, dt2, "3mo"))
+    
+    def test_quarters_year_boundary(self):
+        dt1 = pd.Timestamp("2024-12-15")  # Q4 2024
+        dt2 = pd.Timestamp("2025-01-15")  # Q1 2025
+        self.assertFalse(_dts_in_same_interval(dt1, dt2, "3mo"))
+    
+    def test_hourly_interval(self):
+        dt1 = pd.Timestamp("2024-10-15 14:00:00")
+        dt2 = pd.Timestamp("2024-10-15 14:59:59")
+        self.assertTrue(_dts_in_same_interval(dt1, dt2, "1h"))
+        
+        dt3 = pd.Timestamp("2024-10-15 15:00:00")
+        self.assertFalse(_dts_in_same_interval(dt1, dt3, "1h"))
+    
+    def test_custom_intervals(self):
+        # Test 4 hour interval
+        dt1 = pd.Timestamp("2024-10-15 10:00:00")
+        dt2 = pd.Timestamp("2024-10-15 13:59:59")
+        self.assertTrue(_dts_in_same_interval(dt1, dt2, "4h"))
+        
+        dt3 = pd.Timestamp("2024-10-15 14:00:00")
+        self.assertFalse(_dts_in_same_interval(dt1, dt3, "4h"))
+        
+    def test_minute_intervals(self):
+        dt1 = pd.Timestamp("2024-10-15 10:30:00")
+        dt2 = pd.Timestamp("2024-10-15 10:30:45")
+        self.assertTrue(_dts_in_same_interval(dt1, dt2, "1min"))
+        
+        dt3 = pd.Timestamp("2024-10-15 10:31:00")
+        self.assertFalse(_dts_in_same_interval(dt1, dt3, "1min"))
+
+if __name__ == "__main__":
+    unittest.main()
 
 
 def suite():

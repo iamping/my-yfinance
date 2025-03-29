@@ -599,12 +599,36 @@ def fix_Yahoo_returning_prepost_unrequested(quotes, interval, tradingPeriods):
     return quotes
 
 
+def _dts_in_same_interval(dt1, dt2, interval):
+    if dt1 > dt2:
+        tmp = dt1
+        dt1 = dt2
+        dt2 = tmp
+
+    if interval == '1d':
+        last_rows_same_interval = dt1.date() == dt2.date()
+    elif interval == "1wk":
+        last_rows_same_interval = (dt2.year - dt1.year <= 1) and dt1.isocalendar()[1] == dt2.isocalendar()[1]
+    elif interval == "1mo":
+        last_rows_same_interval = dt1.month == dt2.month
+    elif interval == "3mo":
+        q1 = (dt1.month - 1) // 3 + 1
+        q2 = (dt2.month - 1) // 3 + 1
+        year_diff = dt2.year - dt1.year
+        quarter_diff = q2 - q1 + 4*year_diff
+        last_rows_same_interval = quarter_diff == 0
+    else:
+        last_rows_same_interval = (dt2 - dt1) < _pd.Timedelta(interval)
+    return last_rows_same_interval
+
+
 def fix_Yahoo_returning_live_separate(quotes, interval, tz_exchange, repair=False, currency=None):
     # Yahoo bug fix. If market is open today then Yahoo normally returns
     # todays data as a separate row from rest-of week/month interval in above row.
     # Seems to depend on what exchange e.g. crypto OK.
     # Fix = merge them together
     n = quotes.shape[0]
+    dropped_row = None
     if n > 1:
         dt1 = quotes.index[n - 1]
         dt2 = quotes.index[n - 2]
@@ -618,18 +642,10 @@ def fix_Yahoo_returning_live_separate(quotes, interval, tz_exchange, repair=Fals
             # - exception is volume, *slightly* greater on final row (and matches website)
             if dt1.date() == dt2.date():
                 # Last two rows are on same day. Drop second-to-last row
+                dropped_row = quotes.iloc[-2]
                 quotes = _pd.concat([quotes.iloc[:-2], quotes.iloc[-1:]])
         else:
-            if interval == "1wk":
-                last_rows_same_interval = dt1.year == dt2.year and dt1.week == dt2.week
-            elif interval == "1mo":
-                last_rows_same_interval = dt1.month == dt2.month
-            elif interval == "3mo":
-                last_rows_same_interval = dt1.year == dt2.year and dt1.quarter == dt2.quarter
-            else:
-                last_rows_same_interval = (dt1 - dt2) < _pd.Timedelta(interval)
-
-            if last_rows_same_interval:
+            if _dts_in_same_interval(dt1, dt2, interval):
                 # Last two rows are within same interval
                 idx1 = quotes.index[n - 1]
                 idx2 = quotes.index[n - 2]
@@ -681,9 +697,10 @@ def fix_Yahoo_returning_live_separate(quotes, interval, tz_exchange, repair=Fals
                 quotes.loc[idx2, "Dividends"] += quotes["Dividends"].iloc[n - 1]
                 if ss != 1.0:
                     quotes.loc[idx2, "Stock Splits"] = ss
+                dropped_row = quotes.index[n - 1]
                 quotes = quotes.drop(quotes.index[n - 1])
 
-    return quotes
+    return quotes, dropped_row
 
 
 def safe_merge_dfs(df_main, df_sub, interval):
