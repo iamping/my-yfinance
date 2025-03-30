@@ -103,21 +103,46 @@ class TestDateIntervalCheck(unittest.TestCase):
         dt1 = pd.Timestamp("2024-12-15")
         dt2 = pd.Timestamp("2025-01-15")
         self.assertFalse(_dts_in_same_interval(dt1, dt2, "1mo"))
+
+    def test_standard_quarters(self):
+        q1_start = datetime(2023, 1, 1)
+        self.assertTrue(_dts_in_same_interval(q1_start, datetime(2023, 1, 15), '3mo'))
+        self.assertTrue(_dts_in_same_interval(q1_start, datetime(2023, 3, 31), '3mo'))
+        self.assertFalse(_dts_in_same_interval(q1_start, datetime(2023, 4, 1), '3mo'))
+        self.assertFalse(_dts_in_same_interval(q1_start, datetime(2022, 1, 15), '3mo'))  # Previous year
+        self.assertFalse(_dts_in_same_interval(q1_start, datetime(2024, 1, 15), '3mo'))  # Next year
+        
+        q2_start = datetime(2023, 4, 1)
+        self.assertTrue(_dts_in_same_interval(q2_start, datetime(2023, 5, 15), '3mo'))
+        self.assertTrue(_dts_in_same_interval(q2_start, datetime(2023, 6, 30), '3mo'))
+        self.assertFalse(_dts_in_same_interval(q2_start, datetime(2023, 7, 1), '3mo'))
     
-    def test_same_quarter(self):
-        dt1 = pd.Timestamp("2024-10-01")  # Q4
-        dt2 = pd.Timestamp("2024-12-31")  # Q4
-        self.assertTrue(_dts_in_same_interval(dt1, dt2, "3mo"))
+    def test_nonstandard_quarters(self):
+        q1_start = datetime(2023, 2, 1)
+        # Same quarter
+        self.assertTrue(_dts_in_same_interval(q1_start, datetime(2023, 3, 1), '3mo'))
+        self.assertTrue(_dts_in_same_interval(q1_start, datetime(2023, 4, 25), '3mo'))
+        # Different quarters
+        self.assertFalse(_dts_in_same_interval(q1_start, datetime(2023, 1, 25), '3mo'))  # Before quarter start
+        self.assertFalse(_dts_in_same_interval(q1_start, datetime(2023, 6, 1), '3mo'))  # Start of next quarter
+        self.assertFalse(_dts_in_same_interval(q1_start, datetime(2023, 9, 1), '3mo'))  # Start of Q3
+        
+        q2_start = datetime(2023, 5, 1)
+        self.assertTrue(_dts_in_same_interval(q2_start, datetime(2023, 6, 1), '3mo'))
+        self.assertTrue(_dts_in_same_interval(q2_start, datetime(2023, 7, 25), '3mo'))
+        self.assertFalse(_dts_in_same_interval(q2_start, datetime(2023, 8, 1), '3mo'))
     
-    def test_different_quarters(self):
-        dt1 = pd.Timestamp("2024-09-30")  # Q3
-        dt2 = pd.Timestamp("2024-10-01")  # Q4
-        self.assertFalse(_dts_in_same_interval(dt1, dt2, "3mo"))
-    
-    def test_quarters_year_boundary(self):
-        dt1 = pd.Timestamp("2024-12-15")  # Q4 2024
-        dt2 = pd.Timestamp("2025-01-15")  # Q1 2025
-        self.assertFalse(_dts_in_same_interval(dt1, dt2, "3mo"))
+    def test_cross_year_quarters(self):
+        q4_start = datetime(2023, 11, 1)
+        
+        # Same quarter, different year
+        self.assertTrue(_dts_in_same_interval(q4_start, datetime(2023, 11, 15), '3mo'))
+        self.assertTrue(_dts_in_same_interval(q4_start, datetime(2024, 1, 15), '3mo'))
+        self.assertTrue(_dts_in_same_interval(q4_start, datetime(2024, 1, 25), '3mo'))
+        
+        # Different quarters
+        self.assertFalse(_dts_in_same_interval(q4_start, datetime(2024, 2, 1), '3mo'))  # Start of next quarter
+        self.assertFalse(_dts_in_same_interval(q4_start, datetime(2023, 10, 14), '3mo'))  # Before quarter start
     
     def test_hourly_interval(self):
         dt1 = pd.Timestamp("2024-10-15 14:00:00")

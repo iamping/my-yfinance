@@ -600,20 +600,18 @@ def fix_Yahoo_returning_prepost_unrequested(quotes, interval, tradingPeriods):
 
 
 def _dts_in_same_interval(dt1, dt2, interval):
-    if dt1 > dt2:
-        tmp = dt1
-        dt1 = dt2
-        dt2 = tmp
+    # Check if second date dt2 in interval starting at dt1
 
     if interval == '1d':
         last_rows_same_interval = dt1.date() == dt2.date()
     elif interval == "1wk":
-        last_rows_same_interval = (dt2.year - dt1.year <= 1) and dt1.isocalendar()[1] == dt2.isocalendar()[1]
+        last_rows_same_interval = (dt2 - dt1).days < 7
     elif interval == "1mo":
         last_rows_same_interval = dt1.month == dt2.month
     elif interval == "3mo":
-        q1 = (dt1.month - 1) // 3 + 1
-        q2 = (dt2.month - 1) // 3 + 1
+        shift = (dt1.month % 3) - 1
+        q1 = (dt1.month - shift - 1) // 3 + 1
+        q2 = (dt2.month - shift - 1) // 3 + 1
         year_diff = dt2.year - dt1.year
         quarter_diff = q2 - q1 + 4*year_diff
         last_rows_same_interval = quarter_diff == 0
