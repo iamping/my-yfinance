@@ -620,16 +620,19 @@ def _dts_in_same_interval(dt1, dt2, interval):
     return last_rows_same_interval
 
 
-def fix_Yahoo_returning_live_separate(quotes, interval, tz_exchange, repair=False, currency=None):
+def fix_Yahoo_returning_live_separate(quotes, interval, tz_exchange, prepost, repair=False, currency=None):
     # Yahoo bug fix. If market is open today then Yahoo normally returns
     # todays data as a separate row from rest-of week/month interval in above row.
     # Seems to depend on what exchange e.g. crypto OK.
     # Fix = merge them together
-    n = quotes.shape[0]
+
+    if interval[-1] not in ['m', 'h']:
+        prepost = False
+
     dropped_row = None
-    if n > 1:
-        dt1 = quotes.index[n - 1]
-        dt2 = quotes.index[n - 2]
+    if len(quotes) > 1:
+        dt1 = quotes.index[-1]
+        dt2 = quotes.index[-2]
         if quotes.index.tz is None:
             dt1 = dt1.tz_localize("UTC")
             dt2 = dt2.tz_localize("UTC")
@@ -643,14 +646,20 @@ def fix_Yahoo_returning_live_separate(quotes, interval, tz_exchange, repair=Fals
                 dropped_row = quotes.iloc[-2]
                 quotes = _pd.concat([quotes.iloc[:-2], quotes.iloc[-1:]])
         else:
-            if _dts_in_same_interval(dt1, dt2, interval):
+            if _dts_in_same_interval(dt2, dt1, interval):
                 # Last two rows are within same interval
-                idx1 = quotes.index[n - 1]
-                idx2 = quotes.index[n - 2]
+                idx1 = quotes.index[-1]
+                idx2 = quotes.index[-2]
                 if idx1 == idx2:
                     # Yahoo returning last interval duplicated, which means
                     # Yahoo is not returning live data (phew!)
-                    return quotes
+                    return quotes, None
+
+                if prepost:
+                    # Possibly dt1 is just start of post-market
+                    if dt1.second == 0:
+                        # assume post-market interval
+                        return quotes, None
 
                 ss = quotes['Stock Splits'].iloc[-2:].replace(0,1).prod()
                 if repair:
@@ -673,30 +682,28 @@ def fix_Yahoo_returning_live_separate(quotes, interval, tz_exchange, repair=Fals
                             for c in const._PRICE_COLNAMES_:
                                 quotes.loc[idx2, c] *= 0.01
 
-                # quotes.loc[idx2, 'Stock Splits'] = 2  # wtf? why doing this?
-
                 if _np.isnan(quotes.loc[idx2, "Open"]):
-                    quotes.loc[idx2, "Open"] = quotes["Open"].iloc[n - 1]
+                    quotes.loc[idx2, "Open"] = quotes["Open"].iloc[-1]
                 # Note: nanmax() & nanmin() ignores NaNs, but still need to check not all are NaN to avoid warnings
-                if not _np.isnan(quotes["High"].iloc[n - 1]):
-                    quotes.loc[idx2, "High"] = _np.nanmax([quotes["High"].iloc[n - 1], quotes["High"].iloc[n - 2]])
+                if not _np.isnan(quotes["High"].iloc[-1]):
+                    quotes.loc[idx2, "High"] = _np.nanmax([quotes["High"].iloc[-1], quotes["High"].iloc[-2]])
                     if "Adj High" in quotes.columns:
-                        quotes.loc[idx2, "Adj High"] = _np.nanmax([quotes["Adj High"].iloc[n - 1], quotes["Adj High"].iloc[n - 2]])
+                        quotes.loc[idx2, "Adj High"] = _np.nanmax([quotes["Adj High"].iloc[-1], quotes["Adj High"].iloc[-2]])
 
-                if not _np.isnan(quotes["Low"].iloc[n - 1]):
-                    quotes.loc[idx2, "Low"] = _np.nanmin([quotes["Low"].iloc[n - 1], quotes["Low"].iloc[n - 2]])
+                if not _np.isnan(quotes["Low"].iloc[-1]):
+                    quotes.loc[idx2, "Low"] = _np.nanmin([quotes["Low"].iloc[-1], quotes["Low"].iloc[-2]])
                     if "Adj Low" in quotes.columns:
-                        quotes.loc[idx2, "Adj Low"] = _np.nanmin([quotes["Adj Low"].iloc[n - 1], quotes["Adj Low"].iloc[n - 2]])
+                        quotes.loc[idx2, "Adj Low"] = _np.nanmin([quotes["Adj Low"].iloc[-1], quotes["Adj Low"].iloc[-2]])
 
-                quotes.loc[idx2, "Close"] = quotes["Close"].iloc[n - 1]
+                quotes.loc[idx2, "Close"] = quotes["Close"].iloc[-1]
                 if "Adj Close" in quotes.columns:
-                    quotes.loc[idx2, "Adj Close"] = quotes["Adj Close"].iloc[n - 1]
-                quotes.loc[idx2, "Volume"] += quotes["Volume"].iloc[n - 1]
-                quotes.loc[idx2, "Dividends"] += quotes["Dividends"].iloc[n - 1]
+                    quotes.loc[idx2, "Adj Close"] = quotes["Adj Close"].iloc[-1]
+                quotes.loc[idx2, "Volume"] += quotes["Volume"].iloc[-1]
+                quotes.loc[idx2, "Dividends"] += quotes["Dividends"].iloc[-1]
                 if ss != 1.0:
                     quotes.loc[idx2, "Stock Splits"] = ss
-                dropped_row = quotes.index[n - 1]
-                quotes = quotes.drop(quotes.index[n - 1])
+                dropped_row = quotes.iloc[-1]
+                quotes = quotes.drop(quotes.index[-1])
 
     return quotes, dropped_row
 
